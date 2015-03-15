@@ -3,6 +3,19 @@
 -- Initial Developer: H2 Group
 --
 --- special grammar and test cases ---------------------------------------------------------------------------------------------
+select * from table(a int=(1)), table(b int=(2));
+> A B
+> - -
+> 1 2
+> rows: 1
+
+select x, x in(2, 3) i from system_range(1, 2) group by x;
+> X I
+> - -----
+> 1 FALSE
+> 2 TRUE
+> rows: 2
+
 select * from dual join(select x from dual) on 1=1;
 > X X
 > - -

@@ -788,6 +788,13 @@ public class Build extends BuildBase {
     }
 
     /**
+     * Test decision tree
+     */
+    public void testDecisionTree() {
+	downloadTest();
+    }
+
+    /**
      * Print the system properties
      */
     public void testSysProperties() {
