@@ -118,6 +118,8 @@ public class Function extends Expression implements FunctionCall {
             FILE_READ = 225, TRANSACTION_ID = 226, TRUNCATE_VALUE = 227,
             NVL2 = 228, DECODE = 229, ARRAY_CONTAINS = 230;
 
+    public static final int DECISIONTREE = 240;
+    
     /**
      * Used in MySQL-style INSERT ... ON DUPLICATE KEY UPDATE ... VALUES
      */
@@ -428,6 +430,10 @@ public class Function extends Expression implements FunctionCall {
                 VAR_ARGS, Value.RESULT_SET, false, false, false);
         addFunction("CSVWRITE", CSVWRITE,
                 VAR_ARGS, Value.INT, false, false, true);
+        
+        addFunction("DECISIONTREE", DECISIONTREE,
+                    VAR_ARGS, Value.STRING, false, false, true);
+        
         addFunctionNotDeterministic("MEMORY_FREE", MEMORY_FREE,
                 0, Value.INT);
         addFunctionNotDeterministic("MEMORY_USED", MEMORY_USED,
@@ -1541,6 +1547,70 @@ public class Function extends Expression implements FunctionCall {
             }
             break;
         }
+        case DECISIONTREE: {
+            session.getUser().checkAdmin();
+            Connection conn = session.createConnection(false);
+            result = null;
+            Statement stat;
+            ResultSet rs = null;
+            try {
+                stat = conn.createStatement();
+                String sql = "SELECT " + v1.getString();
+                for (int i = 2; i < 10; i++) {
+                    Value feature = getNullOrValue(session, args, values, i);
+                    if (feature != null) {
+                        sql += ", " + feature.getString();
+                    }
+                }
+                
+                sql += " FROM " + v0.getString();
+                System.out.println(sql);
+                
+                rs = stat.executeQuery(sql);
+                
+                int rows = 0;
+                ResultSetMetaData meta = rs.getMetaData();
+                int columnCount = meta.getColumnCount();
+                String[] row = new String[columnCount];
+                int[] sqlTypes = new int[columnCount];
+                for (int i = 0; i < columnCount; i++) {
+                    row[i] = meta.getColumnLabel(i + 1);
+                    sqlTypes[i] = meta.getColumnType(i + 1);
+                }
+                
+                while (rs.next()) {
+                    System.out.println("");
+                    for (int i = 0; i < columnCount; i++) {
+                        Object o;
+                        switch (sqlTypes[i]) {
+                            case Types.DATE:
+                                o = rs.getDate(i + 1);
+                                break;
+                            case Types.TIME:
+                                o = rs.getTime(i + 1);
+                                break;
+                            case Types.TIMESTAMP:
+                                o = rs.getTimestamp(i + 1);
+                                break;
+                            default:
+                                o = rs.getString(i + 1);
+                        }
+                        row[i] = o == null ? null : o.toString();
+                        System.out.print(row[i] + " ");
+                    }
+                    rows++;
+                }
+            } catch (SQLException se) {
+                se.printStackTrace();
+            } catch (Exception e){
+                e.printStackTrace();
+            } finally {
+                JdbcUtils.closeSilently(rs);
+                result = ValueString.get("Decision Tree called.");
+            }
+            
+            break;
+        }
         case SET: {
             Variable var = (Variable) args[0];
             session.setVariable(var.getName(), v1);
@@ -2069,6 +2139,7 @@ public class Function extends Expression implements FunctionCall {
             break;
         case CONCAT:
         case CONCAT_WS:
+        case DECISIONTREE: // minimum 2 arguments: table_name, feature
         case CSVWRITE:
             min = 2;
             break;
