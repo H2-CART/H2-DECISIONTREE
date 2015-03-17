@@ -11,10 +11,10 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.Reader;
-import java.sql.Connection;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Timestamp;
+
+import java.sql.*;
+import org.h2.util.*;
+
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
@@ -1550,7 +1550,7 @@ public class Function extends Expression implements FunctionCall {
         case DECISIONTREE: {
             session.getUser().checkAdmin();
             Connection conn = session.createConnection(false);
-            result = null;
+            result = ValueString.get("");
             Statement stat;
             ResultSet rs = null;
             try {
@@ -1564,50 +1564,43 @@ public class Function extends Expression implements FunctionCall {
                 }
                 
                 sql += " FROM " + v0.getString();
-                System.out.println(sql);
                 
                 rs = stat.executeQuery(sql);
                 
-                int rows = 0;
-                ResultSetMetaData meta = rs.getMetaData();
-                int columnCount = meta.getColumnCount();
-                String[] row = new String[columnCount];
-                int[] sqlTypes = new int[columnCount];
-                for (int i = 0; i < columnCount; i++) {
-                    row[i] = meta.getColumnLabel(i + 1);
-                    sqlTypes[i] = meta.getColumnType(i + 1);
-                }
+                ID3 data = new ID3(rs);
                 
-                while (rs.next()) {
-                    System.out.println("");
-                    for (int i = 0; i < columnCount; i++) {
-                        Object o;
-                        switch (sqlTypes[i]) {
-                            case Types.DATE:
-                                o = rs.getDate(i + 1);
-                                break;
-                            case Types.TIME:
-                                o = rs.getTime(i + 1);
-                                break;
-                            case Types.TIMESTAMP:
-                                o = rs.getTimestamp(i + 1);
-                                break;
-                            default:
-                                o = rs.getString(i + 1);
-                        }
-                        row[i] = o == null ? null : o.toString();
-                        System.out.print(row[i] + " ");
-                    }
-                    rows++;
-                }
+                /* Test for Marine Animal
+                 data.see();
+                 
+                 System.out.println(data.calcShannonEntropy(data.get()));
+                 
+                 System.out.println("Split 0, 0");
+                 data.see(data.splitDataSet(data.get(), 0, "0"));
+                 
+                 System.out.println("Split 0, 1");
+                 data.see(data.splitDataSet(data.get(), 0, "1"));
+                 
+                 System.out.println("Split 1, 0");
+                 data.see(data.splitDataSet(data.get(), 1, "0"));
+                 
+                 System.out.println("Split 1, 1");
+                 data.see(data.splitDataSet(data.get(), 1, "1"));
+                 
+                 System.out.print("Best feature to split: ");
+                 System.out.println(data.chooseBestFeatureToSplit(data.get()));
+                 */
+                
+                result = ValueString.get(data.createTree(data.get(), data.getFeatures()));
+                
             } catch (SQLException se) {
                 se.printStackTrace();
             } catch (Exception e){
                 e.printStackTrace();
             } finally {
                 JdbcUtils.closeSilently(rs);
-                result = ValueString.get("Decision Tree called.");
+                
             }
+            
             
             break;
         }
@@ -2139,9 +2132,12 @@ public class Function extends Expression implements FunctionCall {
             break;
         case CONCAT:
         case CONCAT_WS:
-        case DECISIONTREE: // minimum 2 arguments: table_name, feature
         case CSVWRITE:
             min = 2;
+            break;
+        case DECISIONTREE: // minimum 2 arguments: table_name, feature
+            min = 3;
+            max = 10;
             break;
         case XMLNODE:
             min = 1;
