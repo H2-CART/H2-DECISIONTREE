@@ -11,15 +11,20 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.io.BufferedWriter;
+import java.io.FileWriter;
+import java.io.IOException;
 
 public class ID3 {
     private List<String []> data = new ArrayList<String[]>();
+    private String tablename;
 
     public ID3() {
 
     }
 
-    public ID3(ResultSet rs) {
+    public ID3(ResultSet rs, String name) {
+        tablename = name;
         try {
             int rows = 0;
             ResultSetMetaData meta = rs.getMetaData();
@@ -242,11 +247,32 @@ public class ID3 {
         String[] uniqueVals = new HashSet<String>(Arrays.asList(featValues)).toArray(new String[0]);
 
         myTree += "{";
-        myTree += "'" + uniqueVals[0] + "': '" + createTree(splitDataSet(dataSet, bestFeat, uniqueVals[0]), subLabels) + "'";
+        myTree += "'" + uniqueVals[0] + "': " + createTree(splitDataSet(dataSet, bestFeat, uniqueVals[0]), subLabels);
         for (int j = 1; j < uniqueVals.length; j++) {
             myTree += ", '" + uniqueVals[j] + "': " + createTree(splitDataSet(dataSet, bestFeat, uniqueVals[j]), subLabels) + "";
         }
         myTree += "}}";
+
+
+        // output to file
+        BufferedWriter writer = null;
+        try {
+            writer = new BufferedWriter(new FileWriter(tablename));
+            writer.write(myTree);
+        }
+        catch (IOException e) {
+            e.printStackTrace();
+        }
+        finally {
+            try {
+                if (writer != null)
+                    writer.close( );
+            }
+            catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+
         return myTree;
     }
 
