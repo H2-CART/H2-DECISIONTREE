@@ -37,4 +37,11 @@ INSERT INTO CLENSES VALUES(24, 'presbyopic', 'hypermetrope', 'yes', 'normal', 'N
 CALL DECISIONTREE('CLENSES', 'AGE', 'SPR', 'AST', 'TPR', 'LNS');
 
 ALTER TABLE CLENSES
-ADD COLUMN PREDICTION VARCHAR(255) AS CLASSIFY('CONTACTLENSES', AGE, SPR, AST, TPR, LNS) AFTER LNS
+ADD COLUMN PREDICTION VARCHAR(255) AS CLASSIFY('CLENSES', AGE, SPR, AST, TPR, LNS) AFTER LNS
+
+
+INSERT INTO CLENSES (ID, AGE, SPR, AST, TPR, LNS)
+VALUES (25, 'young', 'hypermetrope', 'yes', 'reduced', 'Soft contact lenses')
+
+INSERT INTO CLENSES (ID, AGE, SPR, AST, TPR, LNS)
+VALUES (26, 'young', 'hypermetrope', 'no', 'normal', 'No contact lenses')
