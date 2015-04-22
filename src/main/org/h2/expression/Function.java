@@ -11,10 +11,14 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.Reader;
-import java.sql.Connection;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Timestamp;
+
+import java.sql.*;
+import org.h2.util.*;
+import java.nio.file.*;
+import java.nio.charset.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
@@ -45,14 +49,7 @@ import org.h2.table.Table;
 import org.h2.table.TableFilter;
 import org.h2.tools.CompressTool;
 import org.h2.tools.Csv;
-import org.h2.util.AutoCloseInputStream;
-import org.h2.util.DateTimeUtils;
 import org.h2.util.JdbcUtils;
-import org.h2.util.MathUtils;
-import org.h2.util.New;
-import org.h2.util.StatementBuilder;
-import org.h2.util.StringUtils;
-import org.h2.util.Utils;
 import org.h2.value.DataType;
 import org.h2.value.Value;
 import org.h2.value.ValueArray;
@@ -118,6 +115,7 @@ public class Function extends Expression implements FunctionCall {
             FILE_READ = 225, TRANSACTION_ID = 226, TRUNCATE_VALUE = 227,
             NVL2 = 228, DECODE = 229, ARRAY_CONTAINS = 230;
 
+    public static final int DECISIONTREE = 240, CLASSIFY = 241;
     /**
      * Used in MySQL-style INSERT ... ON DUPLICATE KEY UPDATE ... VALUES
      */
@@ -146,6 +144,13 @@ public class Function extends Expression implements FunctionCall {
     private long precision = PRECISION_UNKNOWN;
     private int displaySize;
     private final Database database;
+
+    static String readFile(String path, Charset encoding)
+            throws IOException
+    {
+        byte[] encoded = Files.readAllBytes(Paths.get(path));
+        return new String(encoded, encoding);
+    }
 
     static {
         // DATE_PART
@@ -428,6 +433,12 @@ public class Function extends Expression implements FunctionCall {
                 VAR_ARGS, Value.RESULT_SET, false, false, false);
         addFunction("CSVWRITE", CSVWRITE,
                 VAR_ARGS, Value.INT, false, false, true);
+
+        addFunction("DECISIONTREE", DECISIONTREE,
+                VAR_ARGS, Value.STRING, false, false, true);
+        addFunction("CLASSIFY", CLASSIFY,
+                VAR_ARGS, Value.STRING, false, false, true);
+
         addFunctionNotDeterministic("MEMORY_FREE", MEMORY_FREE,
                 0, Value.INT);
         addFunctionNotDeterministic("MEMORY_USED", MEMORY_USED,
@@ -1541,6 +1552,134 @@ public class Function extends Expression implements FunctionCall {
             }
             break;
         }
+        case DECISIONTREE: {
+            session.getUser().checkAdmin();
+            Connection conn = session.createConnection(false);
+            result = ValueString.get("");
+            Statement stat;
+            ResultSet rs = null;
+            try {
+                stat = conn.createStatement();
+                String sql = "SELECT " + v1.getString();
+                for (int i = 2; i < 10; i++) {
+                    Value feature = getNullOrValue(session, args, values, i);
+                    if (feature != null) {
+                        sql += ", " + feature.getString();
+                    }
+                }
+
+                sql += " FROM " + v0.getString();
+
+                rs = stat.executeQuery(sql);
+
+                ID3 data = new ID3(rs, v0.getString());
+
+                /* Test for Marine Animal
+                data.see();
+
+                System.out.println(data.calcShannonEntropy(data.get()));
+
+                System.out.println("Split 0, 0");
+                data.see(data.splitDataSet(data.get(), 0, "0"));
+
+                System.out.println("Split 0, 1");
+                data.see(data.splitDataSet(data.get(), 0, "1"));
+
+                System.out.println("Split 1, 0");
+                data.see(data.splitDataSet(data.get(), 1, "0"));
+
+                System.out.println("Split 1, 1");
+                data.see(data.splitDataSet(data.get(), 1, "1"));
+
+                System.out.print("Best feature to split: ");
+                System.out.println(data.chooseBestFeatureToSplit(data.get()));
+                 */
+
+                result = ValueString.get(data.createTree(data.get(), data.getFeatures()));
+
+            } catch (SQLException se) {
+                se.printStackTrace();
+            } catch (Exception e){
+                e.printStackTrace();
+            } finally {
+                JdbcUtils.closeSilently(rs);
+
+            }
+
+
+            break;
+        }
+        case CLASSIFY:
+            // read if model exist
+            result = null;
+            HashMap<String, String> features = new HashMap<String, String>();
+
+            session.getUser().checkAdmin();
+            Connection conn = session.createConnection(false);
+            Statement stat;
+            ResultSet rs = null;
+            try {
+                // get features of newly inserted row
+                stat = conn.createStatement();
+                String sql = "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '";
+                sql += v0.getString();
+                sql += "' AND ORDINAL_POSITION > 1 AND ORDINAL_POSITION < (SELECT MAX(ORDINAL_POSITION) ";
+                sql += "FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '";
+                sql += v0.getString();
+                sql += "') ORDER BY ORDINAL_POSITION";
+                rs = stat.executeQuery(sql);
+
+                int rows = 1;
+                String target = "";
+                while (rs.next()) {
+                    Object o = rs.getString(1);
+                    Value feature = getNullOrValue(session, args, values, rows);
+                    if (feature != null) {
+                        features.put(o == null ? null : o.toString(), feature.getString());
+                        target = o == null ? null : o.toString();
+                    }
+                    rows++;
+                }
+
+                // get labels
+                // get target column name
+                sql = "SELECT DISTINCT " + target + " FROM ";
+                sql += v0.getString();
+                sql += " WHERE " + target + " IS NOT NULL";
+                rs = stat.executeQuery(sql);
+
+                rows = 1;
+                // get features of newly inserted row
+                ArrayList<String> labelsAL = new ArrayList<String>();
+                while (rs.next()) {
+                    Object o = rs.getString(1);
+                    labelsAL.add(o.toString());
+                    rows++;
+                }
+
+
+                String[] labels = new String[labelsAL.size()];
+                labels = labelsAL.toArray(labels);
+
+                try {
+                    String tree = readFile(v0.getString(), StandardCharsets.UTF_8);
+
+                    result = ValueString.get(classify(stripEnds(tree), features));
+
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+
+            } catch (SQLException se) {
+                se.printStackTrace();
+            } catch (Exception e){
+                e.printStackTrace();
+            } finally {
+                JdbcUtils.closeSilently(rs);
+            }
+
+            // classify and return
+            break;
         case SET: {
             Variable var = (Variable) args[0];
             session.setVariable(var.getName(), v1);
@@ -1593,6 +1732,88 @@ public class Function extends Expression implements FunctionCall {
             throw DbException.throwInternalError("type=" + info.type);
         }
         return result;
+    }
+
+    public static String stripEnds(String input) {
+        return input.substring(1, input.length()-1);
+    }
+
+    public static String classify(String tree, HashMap<String, String> map) {
+//        System.out.println(tree);
+//        for (String k: map.keySet()) {
+//            System.out.println("  mkey: " + k);
+//            System.out.println("  mval: " + map.get(k));
+//        }
+
+        String target = "";
+        String pattern = "'(.*?)': (.*)$";
+        Pattern r = Pattern.compile(pattern);
+        Matcher m = r.matcher(tree);
+        String key = "";
+        String value = "";
+        HashMap<String, String> pair = new HashMap<String, String>();
+
+        if (m.find( )) {
+            key = m.group(1);
+            value = stripEnds(m.group(2));
+//            System.out.println(key);
+//            System.out.println(value);
+
+            int brace = 0;
+            String first = "";
+            String rest = "";
+
+            do {
+                // finding position of first comma "," to split 'value'
+
+                for (int i = 0; i < value.length(); i++) {
+                    if (value.charAt(i) == '{') {
+                        brace += 1;
+                    } else if (value.charAt(i) == '}') {
+                        brace -= 1;
+                    }
+                    if (value.charAt(i) == ',' && brace == 0) {
+                        first = value.substring(0, i);
+                        rest = value.substring(i+1);
+                        break;
+                    }
+                }
+
+                String[] firstPair = first.split(":", 2);
+                pair.put(stripEnds(firstPair[0].trim()), firstPair[1].trim());
+
+                value = rest.trim();
+
+            } while ((value.lastIndexOf("}") < value.lastIndexOf(",")) ||
+                    (value.indexOf(",") < value.indexOf("{")));
+
+            String last = value;
+            String[] lastPair = last.split(":", 2);
+            pair.put(stripEnds(lastPair[0].trim()), lastPair[1].trim());
+
+        } else {
+            return "Unable to determine value"; //System.out.println("NO MATCH");
+        }
+
+//        for (String k: pair.keySet()) {
+//            System.out.println("  key: " + k);
+//            System.out.println("  val: " + pair.get(k));
+//        }
+
+//        System.out.println("map.get(key): " + map.get(key));
+//        System.out.println("pair.get(map.get(key)): " + pair.get(map.get(key)));
+
+        if (pair.get(map.get(key)).contains(",")) {
+//            System.out.println("need to go deeper");
+            String newinput = pair.get(map.get(key));
+            map.remove(key);
+            target = classify(stripEnds(newinput), map);
+        } else {
+//            System.out.println("found prediction");
+            target = stripEnds(pair.get(map.get(key)));
+        }
+
+        return target;
     }
 
     private Sequence getSequence(Session session, Value v0, Value v1) {
@@ -2071,6 +2292,11 @@ public class Function extends Expression implements FunctionCall {
         case CONCAT_WS:
         case CSVWRITE:
             min = 2;
+            break;
+        case CLASSIFY:
+        case DECISIONTREE: // minimum 2 arguments: table_name, feature
+            min = 2;
+            max = 10;
             break;
         case XMLNODE:
             min = 1;
@@ -2626,3 +2852,4 @@ public class Function extends Expression implements FunctionCall {
     }
 
 }
+
