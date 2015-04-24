@@ -9,34 +9,44 @@ import java.sql.*;
 import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.io.BufferedWriter;
+import java.io.BufferedReader;
 import java.io.FileWriter;
+import java.io.FileReader;
 import java.io.IOException;
 
 public class ID3 {
-    private List<String []> data = new ArrayList<String[]>();
-    private String tablename;
+    private static List<String []> data = new ArrayList<String[]>();
+    private static Map<String, List<String>> mapping = new HashMap<String, List<String>>();
+    private static List<String[] > dataSet;
+    private static String[] labels;
 
-    public ID3() {
-
+    public static List<String> getTreeLabels(String name) {
+        return mapping.get(name);
     }
 
+    public ID3() {
+    }
     public ID3(ResultSet rs, String name) {
-        tablename = name;
+        
         try {
             int rows = 0;
             ResultSetMetaData meta = rs.getMetaData();
             int columnCount = meta.getColumnCount();
             String[] row = new String[columnCount];
             int[] sqlTypes = new int[columnCount];
+            List<String> labels = new ArrayList<String>();
             for (int i = 0; i < columnCount; i++) {
+                labels.add(meta.getColumnLabel(i + 1));
+                System.out.println(meta.getColumnLabel(i + 1));
                 row[i] = meta.getColumnLabel(i + 1);
                 sqlTypes[i] = meta.getColumnType(i + 1);
             }
             data.add(rows, row);
-
+            mapping.put(name, labels);
             while (rs.next()) {
                 row = new String[columnCount];
                 for (int i = 0; i < columnCount; i++) {
@@ -58,7 +68,6 @@ public class ID3 {
                 }
                 rows++;
                 data.add(rows, row);
-
             }
 
         } catch (SQLException se) {
@@ -206,7 +215,9 @@ public class ID3 {
         return maj;
     }
 
-    public String createTree(List<String[] > dataSet, String[] labels) {
+    public String createTree(List<String[] > dataSet, String[] labels, String tablename) {
+        this.dataSet = dataSet;
+        this.labels = labels;
         String[] classList = new String[dataSet.size()-1];
         for (int i = 1; i < dataSet.size(); i++) {
             String[] row = dataSet.get(i);
@@ -247,9 +258,9 @@ public class ID3 {
         String[] uniqueVals = new HashSet<String>(Arrays.asList(featValues)).toArray(new String[0]);
 
         myTree += "{";
-        myTree += "'" + uniqueVals[0] + "': " + createTree(splitDataSet(dataSet, bestFeat, uniqueVals[0]), subLabels);
+        myTree += "'" + uniqueVals[0] + "': " + createTree(splitDataSet(dataSet, bestFeat, uniqueVals[0]), subLabels, tablename);
         for (int j = 1; j < uniqueVals.length; j++) {
-            myTree += ", '" + uniqueVals[j] + "': " + createTree(splitDataSet(dataSet, bestFeat, uniqueVals[j]), subLabels) + "";
+            myTree += ", '" + uniqueVals[j] + "': " + createTree(splitDataSet(dataSet, bestFeat, uniqueVals[j]), subLabels, tablename) + "";
         }
         myTree += "}}";
 
@@ -257,6 +268,7 @@ public class ID3 {
         // output to file
         BufferedWriter writer = null;
         try {
+            System.out.println(tablename);
             writer = new BufferedWriter(new FileWriter(tablename));
             writer.write(myTree);
         }

@@ -148,6 +148,7 @@ import org.h2.value.ValueNull;
 import org.h2.value.ValueString;
 import org.h2.value.ValueTime;
 import org.h2.value.ValueTimestamp;
+import org.h2.util.ID3;
 
 /**
  * The parser is used to convert a SQL statement string to an command object.
@@ -226,6 +227,7 @@ public class Parser {
         Prepared p = parse(sql);
         p.prepare();
         if (currentTokenType != END) {
+            System.out.println("throw exception here");
             throw getSyntaxError();
         }
         return p;
@@ -1046,6 +1048,9 @@ public class Parser {
         if (readIf("SORTED")) {
             command.setSortedInsertMode(true);
         }
+        if (readIf("REDECISION")) {
+            command.redecision(table.getName(), session);
+        }
         if (readIf("DEFAULT")) {
             read("VALUES");
             Expression[] expr = {};
@@ -1088,6 +1093,7 @@ public class Parser {
         } else {
             command.setQuery(parseSelect());
         }
+       
         if (database.getMode().onDuplicateKeyUpdate) {
             if (readIf("ON")) {
                 read("DUPLICATE");

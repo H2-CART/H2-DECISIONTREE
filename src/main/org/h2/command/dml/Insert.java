@@ -5,8 +5,11 @@
  */
 package org.h2.command.dml;
 
+import java.util.List;
 import java.util.ArrayList;
 import java.util.HashMap;
+
+import java.sql.*;
 
 import org.h2.api.ErrorCode;
 import org.h2.api.Trigger;
@@ -32,7 +35,8 @@ import org.h2.util.New;
 import org.h2.util.StatementBuilder;
 import org.h2.value.Value;
 import org.h2.value.ValueNull;
-
+import org.h2.util.ID3;
+import org.h2.util.JdbcUtils;
 /**
  * This class represents the statement
  * INSERT
@@ -46,7 +50,7 @@ public class Insert extends Prepared implements ResultTarget {
     private boolean sortedInsertMode;
     private int rowNumber;
     private boolean insertFromSelect;
-
+    private String redecision;
     /**
      * For MySQL-style INSERT ... ON DUPLICATE KEY UPDATE ....
      */
@@ -56,6 +60,33 @@ public class Insert extends Prepared implements ResultTarget {
         super(session);
     }
 
+
+    public void redecision(String tablename, Session session) {
+        session.getUser().checkAdmin();
+        Connection conn = session.createConnection(false);
+        Statement stat;
+        ResultSet rs = null;
+        List<String> columns = ID3.getTreeLabels(tablename);
+        try {
+            stat = conn.createStatement();
+            String sql = "SELECT ";
+            for(int i = 0; i < columns.size() - 1; i++) {
+                sql += columns.get(i) + ","; 
+            }
+            sql += columns.get(columns.size() - 1) + " ";
+            sql += "FROM " + tablename;
+            rs = stat.executeQuery(sql);
+            ID3 data = new ID3(rs, tablename);
+            data.createTree(data.get(), data.getFeatures(), tablename);
+        } catch (SQLException se) {
+            se.printStackTrace();
+        } catch (Exception e){
+            e.printStackTrace();
+        } finally {
+            JdbcUtils.closeSilently(rs);
+        }
+        
+    }
     @Override
     public void setCommand(Command command) {
         super.setCommand(command);
@@ -89,7 +120,7 @@ public class Insert extends Prepared implements ResultTarget {
         }
         if (duplicateKeyAssignmentMap.containsKey(column)) {
             throw DbException.get(ErrorCode.DUPLICATE_COLUMN_NAME_1,
-                    column.getName());
+                                  column.getName());
         }
         duplicateKeyAssignmentMap.put(column, expression);
     }
@@ -221,6 +252,11 @@ public class Insert extends Prepared implements ResultTarget {
         if (sortedInsertMode) {
             buff.append("SORTED ");
         }
+
+        if(redecision != null) {
+            buff.append("REDECSION ");
+        }
+        
         if (list.size() > 0) {
             buff.append("VALUES ");
             int row = 0;
@@ -310,7 +346,7 @@ public class Insert extends Prepared implements ResultTarget {
     @Override
     public boolean isCacheable() {
         return duplicateKeyAssignmentMap == null ||
-                duplicateKeyAssignmentMap.isEmpty();
+            duplicateKeyAssignmentMap.isEmpty();
     }
 
     private void handleOnDuplicate(DbException de) {
@@ -318,18 +354,18 @@ public class Insert extends Prepared implements ResultTarget {
             throw de;
         }
         if (duplicateKeyAssignmentMap == null ||
-                duplicateKeyAssignmentMap.isEmpty()) {
+            duplicateKeyAssignmentMap.isEmpty()) {
             throw de;
         }
 
         ArrayList<String> variableNames = new ArrayList<String>(
-                duplicateKeyAssignmentMap.size());
+                                                                duplicateKeyAssignmentMap.size());
         for (int i = 0; i < columns.length; i++) {
             String key = table.getSchema().getName() + "." +
-                    table.getName() + "." + columns[i].getName();
+                table.getName() + "." + columns[i].getName();
             variableNames.add(key);
             session.setVariable(key,
-                    list.get(getCurrentRowNumber() - 1)[i].getValue(session));
+                                list.get(getCurrentRowNumber() - 1)[i].getValue(session));
         }
 
         StatementBuilder buff = new StatementBuilder("UPDATE ");
@@ -343,7 +379,7 @@ public class Insert extends Prepared implements ResultTarget {
         Index foundIndex = searchForUpdateIndex();
         if (foundIndex == null) {
             throw DbException.getUnsupportedException(
-                    "Unable to apply ON DUPLICATE KEY UPDATE, no index found!");
+                                                      "Unable to apply ON DUPLICATE KEY UPDATE, no index found!");
         }
         buff.append(prepareUpdateCondition(foundIndex).getSQL());
         String sql = buff.toString();
@@ -386,16 +422,16 @@ public class Insert extends Prepared implements ResultTarget {
         Expression condition = null;
         for (Column column : foundIndex.getColumns()) {
             ExpressionColumn expr = new ExpressionColumn(session.getDatabase(),
-                    table.getSchema().getName(), table.getName(), column.getName());
+                                                         table.getSchema().getName(), table.getName(), column.getName());
             for (int i = 0; i < columns.length; i++) {
                 if (expr.getColumnName().equals(columns[i].getName())) {
                     if (condition == null) {
                         condition = new Comparison(session, Comparison.EQUAL,
-                                expr, list.get(getCurrentRowNumber() - 1)[i++]);
+                                                   expr, list.get(getCurrentRowNumber() - 1)[i++]);
                     } else {
                         condition = new ConditionAndOr(ConditionAndOr.AND, condition,
-                                new Comparison(session, Comparison.EQUAL,
-                                expr, list.get(0)[i++]));
+                                                       new Comparison(session, Comparison.EQUAL,
+                                                                      expr, list.get(0)[i++]));
                     }
                 }
             }

@@ -1569,7 +1569,7 @@ public class Function extends Expression implements FunctionCall {
                 }
 
                 sql += " FROM " + v0.getString();
-
+                
                 rs = stat.executeQuery(sql);
 
                 ID3 data = new ID3(rs, v0.getString());
@@ -1595,7 +1595,7 @@ public class Function extends Expression implements FunctionCall {
                 System.out.println(data.chooseBestFeatureToSplit(data.get()));
                  */
 
-                result = ValueString.get(data.createTree(data.get(), data.getFeatures()));
+                result = ValueString.get(data.createTree(data.get(), data.getFeatures(), v0.getString()));
 
             } catch (SQLException se) {
                 se.printStackTrace();
